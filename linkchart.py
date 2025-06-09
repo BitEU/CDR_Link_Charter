@@ -57,6 +57,19 @@ except ImportError:
     NUMBA_AVAILABLE = False
     print("Numba not installed - JIT compilation disabled")
 
+try:
+    from svglib.svglib import svg2rlg
+except ImportError:
+    missing_packages.append("svglib")
+
+try:
+    import lxml
+except ImportError:
+    missing_packages.append("lxml") # svglib dependency
+
+if missing_packages:
+    print("Missing required packages. Please install them using:")
+
 if missing_packages:
     print("Missing required packages. Please install them using:")
     print(f"pip install {' '.join(missing_packages)}")
@@ -275,11 +288,15 @@ class PersonManagementDialog(tk.Toplevel):
         self.phone_search.pack(side="left", fill="x", expand=True, padx=5)
         self.phone_search.bind('<KeyRelease>', self.filter_phones)
         
+        # This is the corrected code
         self.available_listbox = tk.Listbox(phone_frame, height=8)
-        self.available_listbox.pack(fill="both", expand=True, padx=5, pady=5)
-        
+
+        # The "Assign" button is packed last, but told to stick to the bottom.
         ttk.Button(phone_frame, text="Assign Selected Phone", 
-                  command=self.assign_phone).pack()
+                  command=self.assign_phone).pack(side="bottom", pady=5)
+
+        # The listbox is now packed to fill the remaining space above the button.
+        self.available_listbox.pack(fill="both", expand=True, padx=5, pady=5)
         
         # Populate available phones
         self.refresh_available_phones()
@@ -406,28 +423,86 @@ class PersonManagementDialog(tk.Toplevel):
         self.refresh_available_phones()
         self.refresh_person_list()
 
+class PageSizeDialog(tk.Toplevel):
+    """A modal dialog to ask for PDF page size using radio buttons."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Select Page Size")
+        self.result = None
+        self.choice_var = tk.StringVar(value='a4')  # Default to A4
+
+        # Adjust geometry for new layout
+        parent_x = parent.winfo_x()
+        parent_y = parent.winfo_y()
+        parent_width = parent.winfo_width()
+        parent_height = parent.winfo_height()
+        self.geometry(f"350x180+{parent_x + (parent_width // 2) - 175}+{parent_y + (parent_height // 2) - 90}")
+
+        self.transient(parent)
+        self.grab_set()
+
+        # Main content frame
+        main_frame = ttk.Frame(self, padding="10 10 10 10")
+        main_frame.pack(fill="both", expand=True)
+
+        # Label
+        ttk.Label(main_frame, text="Please select the desired PDF page size:").pack(pady=5, anchor="w")
+
+        # Radio buttons
+        radio_frame = ttk.Frame(main_frame, padding="10 0 0 0")
+        radio_frame.pack(pady=5, fill="x")
+        ttk.Radiobutton(radio_frame, text="Letter (Landscape)", variable=self.choice_var, value='letter').pack(anchor="w")
+        ttk.Radiobutton(radio_frame, text="A4 (Landscape)", variable=self.choice_var, value='a4').pack(anchor="w")
+        ttk.Radiobutton(radio_frame, text="Native (Fit to Chart)", variable=self.choice_var, value='native').pack(anchor="w")
+
+        # --- CORRECTED BUTTON LAYOUT ---
+        # A frame to hold the buttons, packed to the bottom
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(side="bottom", fill="x", pady=(20, 0))
+
+        # Pack buttons to the right side of the button_frame
+        ttk.Button(button_frame, text="Cancel", command=self.on_close, width=10).pack(side="right", padx=5)
+        ttk.Button(button_frame, text="OK", command=self.on_ok, width=10).pack(side="right")
+        # --- END OF CORRECTION ---
+
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.bind("<Return>", lambda event: self.on_ok())
+        self.bind("<Escape>", lambda event: self.on_close())
+        
+    def on_ok(self):
+        self.result = self.choice_var.get()
+        self.destroy()
+
+    def on_close(self):
+        # This is the corrected method where the syntax error was
+        self.result = None
+        self.destroy()
 
 class EnhancedPhoneLinkChartApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Phone Call Link Chart Analyzer - Enhanced Edition")
         self.root.geometry("1400x900")
-        
+
         # Data storage
         self.call_data = pd.DataFrame()
-        self.filtered_data = pd.DataFrame()
+        # No longer need self.filtered_data here, it will be returned by the worker
         self.graph = nx.Graph()
         self.persons = {}  # person_id -> Person object
         self.pos = {}
         self.current_filters = {}
-        
+        self.person_manager_window = None
+
+        # Add a queue for thread communication
+        self.result_queue = queue.Queue()
+
         # Performance settings
         self.use_gpu = CUDA_AVAILABLE
         self.thread_pool = ThreadPoolExecutor(max_workers=mp.cpu_count())
-        
+
         # GUI Setup
         self.setup_gui()
-        
+
         # Try to load sample data
         self.root.after(100, self.load_sample_data)
         
@@ -807,58 +882,126 @@ class EnhancedPhoneLinkChartApp:
         self.apply_current_filters()
         
     def apply_current_filters(self):
-        """Apply current filters to data"""
+        """Starts the filtering process in a background thread to keep the GUI responsive."""
         if self.call_data.empty:
             return
-            
+
         self.status_var.set("Applying filters...")
-        self.progress_var.set(20)
-        
-        # Start with all data
-        filtered = self.call_data.copy()
-        
+        self.progress_bar.start()  # Use indeterminate progress bar for responsiveness
+
+        # Submit the worker function to the thread pool with the necessary data
+        self.thread_pool.submit(self._worker_apply_filters, self.current_filters, self.call_data.copy())
+
+        # Start checking for the result from the queue
+        self.root.after(100, self._check_filter_results)
+
+    def _worker_apply_filters(self, filters, data):
+        """
+        This function runs in the background. It performs all slow filtering and graph building.
+        It combines the logic from the old apply_current_filters and build_filtered_graph methods.
+        """
+        # --- Filtering Stage ---
         # Apply date filter
-        if self.current_filters.get('date_from', 'YYYY-MM-DD') != 'YYYY-MM-DD':
+        if filters.get('date_from', 'YYYY-MM-DD') != 'YYYY-MM-DD':
             try:
-                date_from = pd.to_datetime(self.current_filters['date_from'])
-                filtered = filtered[filtered['timestamp'] >= date_from]
-            except:
-                pass
-                
-        if self.current_filters.get('date_to', 'YYYY-MM-DD') != 'YYYY-MM-DD':
+                date_from = pd.to_datetime(filters['date_from'])
+                data = data[data['timestamp'] >= date_from]
+            except: pass
+
+        if filters.get('date_to', 'YYYY-MM-DD') != 'YYYY-MM-DD':
             try:
-                date_to = pd.to_datetime(self.current_filters['date_to'])
-                filtered = filtered[filtered['timestamp'] <= date_to]
-            except:
-                pass
-                
+                date_to = pd.to_datetime(filters['date_to'])
+                data = data[data['timestamp'] <= date_to]
+            except: pass
+
         # Apply time filter
-        if self.current_filters.get('time_from', 'HH:MM') != 'HH:MM':
+        if filters.get('time_from', 'HH:MM') != 'HH:MM':
             try:
-                time_from = pd.to_datetime(self.current_filters['time_from']).time()
-                filtered = filtered[filtered['timestamp'].dt.time >= time_from]
-            except:
-                pass
-                
-        if self.current_filters.get('time_to', 'HH:MM') != 'HH:MM':
+                time_from = pd.to_datetime(filters['time_from']).time()
+                data = data[data['timestamp'].dt.time >= time_from]
+            except: pass
+
+        if filters.get('time_to', 'HH:MM') != 'HH:MM':
             try:
-                time_to = pd.to_datetime(self.current_filters['time_to']).time()
-                filtered = filtered[filtered['timestamp'].dt.time <= time_to]
-            except:
-                pass
-                
-        self.filtered_data = filtered
-        self.progress_var.set(40)
-        
-        # Rebuild graph with filtered data
-        self.build_filtered_graph()
-        
-        # Update visualizations
-        self.update_graph()
-        self.update_detail_view()
-        
-        self.status_var.set(f"Showing {len(self.filtered_graph.nodes())} nodes, {len(self.filtered_graph.edges())} connections")
-        self.progress_var.set(0)
+                time_to = pd.to_datetime(filters['time_to']).time()
+                data = data[data['timestamp'].dt.time <= time_to]
+            except: pass
+
+        # --- Graph Building Stage ---
+        filtered_graph = nx.Graph()
+        if data.empty:
+            self.result_queue.put(filtered_graph) # Put empty graph in queue and exit
+            return
+
+        # Count calls and gather details
+        call_details = defaultdict(lambda: {'dates': [], 'durations': []})
+        for _, row in data.iterrows():
+            edge_key = tuple(sorted([row['caller'], row['receiver']]))
+            call_details[edge_key]['dates'].append(row['timestamp'])
+            if 'duration' in row and pd.notna(row['duration']):
+                call_details[edge_key]['durations'].append(row['duration'])
+
+        # Filter by minimum calls
+        min_calls = filters.get('min_calls', 1)
+        filtered_edges = {k: len(v['dates']) for k, v in call_details.items() if len(v['dates']) >= min_calls}
+
+        # Get all phones involved in the filtered edges
+        all_phones = set()
+        for (p1, p2) in filtered_edges.keys():
+            all_phones.add(p1)
+            all_phones.add(p2)
+
+        # Apply node limit by selecting most active phones
+        max_nodes = filters.get('max_nodes', 100)
+        if len(all_phones) > max_nodes:
+            phone_activity = defaultdict(int)
+            for (p1, p2), count in filtered_edges.items():
+                phone_activity[p1] += count
+                phone_activity[p2] += count
+
+            top_phones = set(sorted(phone_activity, key=phone_activity.get, reverse=True)[:max_nodes])
+
+            # Further filter edges to only include top phones
+            filtered_edges = {k: v for k, v in filtered_edges.items() if k[0] in top_phones and k[1] in top_phones}
+            all_phones = top_phones
+
+        # Build the final graph
+        filtered_graph.add_nodes_from(all_phones)
+        for (phone1, phone2), count in filtered_edges.items():
+            details = call_details[(phone1, phone2)]
+            dates = sorted(details['dates'])
+            date_range = f"{dates[0].strftime('%m/%d/%y')} - {dates[-1].strftime('%m/%d/%y')}"
+
+            avg_duration = ""
+            if details['durations']:
+                avg_sec = sum(details['durations']) / len(details['durations'])
+                avg_duration = f" ({avg_sec/60:.1f}m avg)" if avg_sec >= 60 else f" ({avg_sec:.0f}s avg)"
+
+            filtered_graph.add_edge(
+                phone1, phone2, weight=count, call_count=count, date_range=date_range,
+                avg_duration=avg_duration, first_call=dates[0], last_call=dates[-1]
+            )
+
+        # Put the final result onto the queue for the main thread
+        self.result_queue.put(filtered_graph)
+
+    def _check_filter_results(self):
+        """Checks the queue for a result from the worker thread and updates the GUI."""
+        try:
+            self.filtered_graph = self.result_queue.get_nowait()
+
+            # Stop the progress bar and update status
+            self.progress_bar.stop()
+            self.progress_var.set(0) # Reset determinate progress bar if needed
+            self.status_var.set(f"Showing {len(self.filtered_graph.nodes())} nodes, {len(self.filtered_graph.edges())} connections")
+
+            # We have a result, so update the visualization
+            self.reset_layout() # reset_layout is better here as it recalculates positions
+            self.update_detail_view()
+
+        except queue.Empty:
+            # Result is not ready yet, check again in 100ms
+            self.root.after(100, self._check_filter_results)
         
     def build_filtered_graph(self):
         """Build graph from filtered data with node limits"""
@@ -1266,16 +1409,29 @@ class EnhancedPhoneLinkChartApp:
                                          info['last'], info['avg_duration']))
                                          
     def open_person_manager(self):
-        """Open the person management dialog"""
+        """Open the person management dialog, ensuring only one instance is open."""
+        # Check if the window already exists and is open
+        if self.person_manager_window and self.person_manager_window.winfo_exists():
+            self.person_manager_window.lift()  # Bring the existing window to the front
+            return
+
         # Get all unique phones
         all_phones = set()
         if not self.call_data.empty:
             all_phones = set(self.call_data['caller'].unique()) | set(self.call_data['receiver'].unique())
-            
+
+        # Create the new dialog
         dialog = PersonManagementDialog(self.root, self.persons, all_phones)
+        self.person_manager_window = dialog  # Store the reference
+
+        # Make the dialog modal and always on top
+        dialog.transient(self.root)  # Associate with the main window
+        dialog.grab_set()            # Direct all events to this window
+
+        # The wait_window call will pause execution here until the dialog is closed
         self.root.wait_window(dialog)
-        
-        # Refresh display
+
+        # After the window is closed, refresh the main graph display
         if hasattr(self, 'filtered_graph'):
             self.update_graph()
             self.update_detail_view()
@@ -1320,7 +1476,7 @@ Current Edges: {len(self.filtered_graph.edges()) if hasattr(self, 'filtered_grap
         messagebox.showinfo("Statistics", stats_text)
         
     def export_to_pdf(self):
-        """Export current view to PDF"""
+        """Prompts for page size and exports the current view to PDF."""
         if not hasattr(self, 'filtered_graph') or self.filtered_graph.number_of_nodes() == 0:
             messagebox.showwarning("Warning", "No data to export")
             return
@@ -1333,44 +1489,70 @@ Current Edges: {len(self.filtered_graph.edges()) if hasattr(self, 'filtered_grap
         
         if not file_path:
             return
-            
+
+        # --- Prompt for Page Size ---
+        dialog = PageSizeDialog(self.root)
+        self.root.wait_window(dialog)
+        choice = dialog.result
+
+        if not choice:
+            return # User cancelled the dialog
+
+        # Import necessary libraries here
+        from reportlab.lib.pagesizes import letter, A4, landscape
+        from svglib.svglib import svg2rlg
+
         try:
-            # Create PDF document
-            doc = SimpleDocTemplate(file_path, pagesize=A4)
-            styles = getSampleStyleSheet()
+            # --- Create Drawing Object (needed for all options) ---
+            temp_svg = tempfile.NamedTemporaryFile(suffix='.svg', delete=False, mode='w', encoding='utf-8')
+            self.fig.savefig(temp_svg.name, format='svg', bbox_inches='tight')
+            temp_svg.close()
+            drawing = svg2rlg(temp_svg.name)
+            
+            # --- Determine Page Size Based on Choice ---
+            pagesize = None
+            if choice == 'letter':
+                pagesize = landscape(letter)
+            elif choice == 'a4':
+                pagesize = landscape(A4)
+            elif choice == 'native':
+                # For native, size the page to the chart plus margins
+                native_width = drawing.width + (2 * inch)
+                # Increased vertical space to 3.5 inches to ensure header fits
+                native_height = drawing.height + (3.5 * inch)
+                pagesize = (native_width, native_height)
+
+            # Create the PDF document with the chosen page size
+            doc = SimpleDocTemplate(file_path, pagesize=pagesize)
             story = []
-            
-            # Title
-            title = Paragraph("Phone Call Network Analysis Report", styles['Title'])
-            story.append(title)
+
+            # --- Add Title and Stats ---
+            styles = getSampleStyleSheet()
+            story.append(Paragraph("Phone Call Network Analysis Report", styles['Title']))
             story.append(Spacer(1, 12))
-            
-            # Add statistics
-            stats = Paragraph(f"""
+            story.append(Paragraph(f"""
             <para>
             <b>Analysis Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}<br/>
             <b>Total Nodes:</b> {len(self.filtered_graph.nodes())}<br/>
             <b>Total Connections:</b> {len(self.filtered_graph.edges())}<br/>
             <b>Filter Applied:</b> {self.status_var.get()}<br/>
             </para>
-            """, styles['Normal'])
-            story.append(stats)
-            story.append(Spacer(1, 12))
+            """, styles['Normal']))
+            story.append(Spacer(1, 24))
+
+            # --- Scale Drawing (if not native) ---
+            if choice != 'native':
+                available_width = doc.width
+                available_height = doc.height
+                if drawing.width > 0 and drawing.height > 0:
+                    scale_factor = min(available_width / drawing.width, available_height / drawing.height)
+                    drawing.scale(scale_factor, scale_factor)
+                    drawing.width = drawing.width * scale_factor
+                    drawing.height = drawing.height * scale_factor
             
-            # Save graph image
-            temp_img = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-            self.fig.savefig(temp_img.name, dpi=300, bbox_inches='tight', facecolor='white')
-            temp_img.close()
-            
-            # Add graph image
-            img = Image(temp_img.name, width=7*inch, height=5*inch)
-            story.append(img)
-            
-            # Build PDF
+            story.append(drawing)
             doc.build(story)
-            
-            # Clean up
-            os.unlink(temp_img.name)
+            os.unlink(temp_svg.name) # Clean up
             
             messagebox.showinfo("Success", f"PDF exported to {file_path}")
             

@@ -1,0 +1,27 @@
+    Shake up how we visualize the data entirely. Rather than a network diagram like this, turn it into a dataflow diagram. I still want people objects and to move things around and filtering and everything, just change how this is visualized
+    I want to be able to click and drag around objects
+    I have some suggestions for what you can do to improve performance. Some you may have done already, but do what you havent
+        GPU ACCELERATION:
+            CuPy support for NVIDIA GPU acceleration
+            PyTorch CUDA as fallback option
+            Vectorized operations using NumPy/CuPy for massive datasets
+            Adjacency matrices instead of slow NetworkX operations ⚡ CPU OPTIMIZATION:
+            Multi-threading with ThreadPoolExecutor using all CPU cores
+            Vectorized plotting
+                single matplotlib calls instead of loops
+            Asynchronous processing
+                UI stays responsive
+            High process priority setting
+            Optimized matplotlib backend and rendering settings 🎯 SMART PERFORMANCE FEATURES:
+            Throttled rendering
+                Max 20 FPS during dragging
+            Minimal redraws
+                Only update when necessary
+            Rasterization for complex elements 📊 PERFORMANCE MONITORING:
+            Real-time performance indicators in the UI
+            Render time tracking
+            GPU/CPU usage display
+            Node/edge count monitoring
+    The window to manage persons should always stay on top until the user closes it, and you should only be able to open one at a time, I shouldn't be able to have 20 open
+    In the PDF export, you should be able to highlight any text in the chart
+    I also want the chart in the PDF to be way higher DPI. It should also be in landscape not portrait orientation
