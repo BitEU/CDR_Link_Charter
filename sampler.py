@@ -60,7 +60,7 @@ def write_cdr_csv(filename, rows):
         writer.writerows(rows)
 
 if __name__ == "__main__":
-    phonebook = generate_phonebook(100, 1400)
-    cdr_rows = generate_cdr_rows(18000, phonebook)
+    phonebook = generate_phonebook(6, 60)
+    cdr_rows = generate_cdr_rows(600, phonebook)
     write_cdr_csv('cdr_sample.csv', cdr_rows)
     print(f"Generated cdr_sample.csv with {len(cdr_rows)} rows and {len(phonebook)} unique phone numbers.")
