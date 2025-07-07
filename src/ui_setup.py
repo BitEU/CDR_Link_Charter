@@ -51,7 +51,7 @@ class UISetup:
         header_frame.pack(fill=tk.X, pady=(0, 15))
         
         # Title
-        title_label = ttk.Label(header_frame, text="People Connection Visualizer", 
+        title_label = ttk.Label(header_frame, text="CDR Visualizer - COMRADE", 
                                font=("Segoe UI", 20, "bold"), 
                                foreground=COLORS['primary'], 
                                style="Modern.TLabel")
@@ -60,9 +60,11 @@ class UISetup:
         # Toolbar with modern buttons
         toolbar = ttk.Frame(main_container, style="Modern.TFrame")
         toolbar.pack(fill=tk.X, pady=(0, 15))
-          # Create modern buttons with icons        
-        self.create_modern_button(toolbar, "👤 Add Person", self.app.add_person, COLORS['primary'])
-        self.create_modern_button(toolbar, "❌ Delete Person", self.app.delete_person, COLORS['danger'])
+        
+        # Create modern buttons with icons
+        self.create_modern_button(toolbar, "📁 Import CDR", self.app.import_cdr_csv, COLORS['primary'])
+        self.create_modern_button(toolbar, "📱 Add Phone", self.app.add_phone, COLORS['primary'])
+        self.create_modern_button(toolbar, "❌ Delete Phone", self.app.delete_phone, COLORS['danger'])
         self.create_modern_button(toolbar, "💾 Save Project", self.app.save_data, COLORS['accent'])
         self.create_modern_button(toolbar, "📁 Load Project", self.app.load_data, COLORS['accent'])
         self.create_modern_button(toolbar, "🖼️ Export PNG", self.app.export_to_png, COLORS['secondary'])
@@ -72,7 +74,8 @@ class UISetup:
         # Canvas container with modern styling
         canvas_frame = ttk.Frame(main_container, style="Modern.TFrame")
         canvas_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-          # Modern canvas with gradient-like background
+        
+        # Modern canvas with gradient-like background
         self.app.canvas = tk.Canvas(canvas_frame, 
                                bg='#f8fafc', 
                                highlightthickness=0,
@@ -83,7 +86,8 @@ class UISetup:
         # Initialize fixed scroll region for consistent canvas size
         self.app.fixed_canvas_width = 2800
         self.app.fixed_canvas_height = 1800
-          # Add subtle grid pattern to canvas
+        
+        # Add subtle grid pattern to canvas
         self.app.canvas_helpers.add_grid_pattern()
         
         # Bind events
@@ -108,7 +112,8 @@ class UISetup:
         self.app.root.bind("<Key-Delete>", self.app.events.on_delete_key)
         self.app.root.bind("<Key-BackSpace>", self.app.events.on_delete_key)
         self.app.root.bind("<Key-c>", self.app.events.on_color_cycle_key)
-          # Modern instructions panel
+        
+        # Modern instructions panel
         self.create_instructions_panel(main_container)
         
         # Status bar
@@ -116,7 +121,7 @@ class UISetup:
         self.app.status_frame.pack(fill=tk.X, pady=(10, 0))
         
         self.app.status_label = ttk.Label(self.app.status_frame, 
-                                    text="Ready - Right-click a person to start linking",
+                                    text="Ready - Import CDR data to begin",
                                     font=("Segoe UI", 9),
                                     foreground=COLORS['text_secondary'],
                                     style="Modern.TLabel")
@@ -172,12 +177,12 @@ class UISetup:
         instructions_frame.pack(fill=tk.X, pady=(10, 0))
         
         instructions = [
-            "🖱️ Left-click to select and move people",
-            "🔗 Right-click to link: first person, then target", 
-            "✏️ Double-click on a person to edit their information",
-            "⌨️ Press 'C' to cycle selected person's color",
-            "❌ Press Delete to remove selected person or connection",
-            "🚫 Press Escape to cancel an active connection"
+            "🖱️ Left-click to select and move phones",
+            "🔗 Right-click to add notes between phones", 
+            "✏️ Double-click on a phone to edit alias",
+            "⌨️ Press 'C' to cycle selected phone's color",
+            "❌ Press Delete to remove selected phone or connection",
+            "🚫 Press Escape to cancel an active action"
         ]
         
         for i, instruction in enumerate(instructions):

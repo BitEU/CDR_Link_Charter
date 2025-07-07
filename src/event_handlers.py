@@ -1,6 +1,6 @@
 from datetime import datetime
 from src.constants import COLORS, CARD_COLORS
-from src.dialogs import ConnectionLabelDialog, PersonDialog
+from src.dialogs import ConnectionLabelDialog, PhoneDialog
 from tkinter import messagebox
 
 # This file will contain event handling logic.
@@ -13,7 +13,7 @@ class EventHandlers:
         self.connecting = False
         self.connection_start = None
         self.temp_line = None
-        self.selected_person = None
+        self.selected_phone = None
         self.selected_connection = None
         self.last_zoom = 1.0
         self.zoom_debounce_timer = None
@@ -59,7 +59,6 @@ class EventHandlers:
     def _perform_zoom_update(self, zoom):
         """Perform the actual expensive zoom update operations"""
         self.app.canvas_helpers.rescale_text(zoom)
-        self.app.canvas_helpers.rescale_images(zoom)
         self.app.canvas_helpers.update_connections()
         self.app.canvas_helpers.redraw_grid()
         self.zoom_debounce_timer = None
@@ -82,7 +81,7 @@ class EventHandlers:
         
         # Always clear selections on a new click
         self.clear_connection_selection()
-        self.selected_person = None
+        self.selected_phone = None
         self.dragging = False
 
         if not items:
@@ -99,26 +98,27 @@ class EventHandlers:
                         parts = tag.split("_")
                         if len(parts) >= 4:
                             try:
-                                id1, id2 = int(parts[2]), int(parts[3])
-                                self.selected_connection = (min(id1, id2), max(id1, id2))
+                                phone1 = "_".join(parts[2:-1])  # Handle phone numbers with underscores
+                                phone2 = parts[-1]
+                                self.selected_connection = tuple(sorted([phone1, phone2]))
                                 self.highlight_connection_selection()
                                 self.app.canvas.focus_set()
                                 return  # Exit after handling the click
                             except ValueError:
                                 continue
             
-            # If not a connection, check for a person
-            if any("person" in tag for tag in tags):
+            # If not a connection, check for a phone
+            if any("phone" in tag for tag in tags):
                 for tag in tags:
-                    if tag.startswith("person_"):
-                        person_id = int(tag.split("_")[1])
-                        self.selected_person = person_id
+                    if tag.startswith("phone_") and tag != "phone":
+                        phone_number = tag[6:]  # Remove "phone_" prefix
+                        self.selected_phone = phone_number
                         self.drag_data = {"x": canvas_x, "y": canvas_y}
                         self.dragging = True
                         return # Exit after handling the click
 
     def on_canvas_drag(self, event):
-        if self.dragging and self.selected_person:
+        if self.dragging and self.selected_phone:
             zoom = self.last_zoom
             
             # Convert screen coordinates to canvas coordinates
@@ -134,27 +134,27 @@ class EventHandlers:
             dy_world = dy_canvas / zoom
             
             # Update logical (unscaled) position using world delta
-            self.app.people[self.selected_person].x += dx_world
-            self.app.people[self.selected_person].y += dy_world
+            self.app.phone_nodes[self.selected_phone].x += dx_world
+            self.app.phone_nodes[self.selected_phone].y += dy_world
 
             # Move existing canvas items directly during drag (much more efficient)
-            person_items = self.app.person_widgets[self.selected_person]
-            for item in person_items:
+            phone_items = self.app.node_widgets[self.selected_phone]
+            for item in phone_items:
                 self.app.canvas.move(item, dx_canvas, dy_canvas)
 
             # Update connections immediately (but efficiently)
-            self.app.canvas_helpers.update_connections()  # Update connections
+            self.app.canvas_helpers.update_connections()
             # Update drag data for next movement
             self.drag_data = {"x": canvas_x, "y": canvas_y}
 
     def on_canvas_release(self, event):
-        if self.dragging and self.selected_person:
+        if self.dragging and self.selected_phone:
             self.dragging = False
             
             # Don't refresh the widget - it's already at the correct position and scale
             # Only refresh if there was a pending color change
             if self._pending_color_refresh:
-                self.app.root.after(50, lambda: self.app.refresh_person_widget(self._pending_color_refresh))
+                self.app.root.after(50, lambda: self.app.refresh_phone_widget(self._pending_color_refresh))
                 self._pending_color_refresh = None
         else:
             self.dragging = False
@@ -179,8 +179,9 @@ class EventHandlers:
                 parts = tag.split("_")
                 if len(parts) >= 4:
                     try:
-                        id1, id2 = int(parts[2]), int(parts[3])
-                        self.selected_connection = (min(id1, id2), max(id1, id2))
+                        phone1 = "_".join(parts[2:-1])  # Handle phone numbers with underscores
+                        phone2 = parts[-1]
+                        self.selected_connection = tuple(sorted([phone1, phone2]))
                         self.edit_connection_label()
                         break
                     except ValueError:
@@ -205,38 +206,38 @@ class EventHandlers:
         items = self.app.canvas.find_overlapping(canvas_x - tolerance, canvas_y - tolerance, 
                                            canvas_x + tolerance, canvas_y + tolerance)
         
-        person_id = None
+        phone_number = None
         for item in items:
             tags = self.app.canvas.gettags(item)
-            if any("person" in tag for tag in tags):
+            if any("phone" in tag for tag in tags):
                 for tag in tags:
-                    if tag.startswith("person_"):
-                        person_id = int(tag.split("_")[1])
+                    if tag.startswith("phone_") and tag != "phone":
+                        phone_number = tag[6:]  # Remove "phone_" prefix
                         break
-                if person_id is not None:
+                if phone_number is not None:
                     break
         
-        if person_id is not None:
-            if not self.connecting or (self.connecting and person_id != self.connection_start):
-                if self.current_hover != person_id:
+        if phone_number is not None:
+            if not self.connecting or (self.connecting and phone_number != self.connection_start):
+                if self.current_hover != phone_number:
                     pass
-                if self.current_hover != person_id:
+                if self.current_hover != phone_number:
                     self.app.canvas.configure(cursor="hand2")
-                    self.current_hover = person_id
+                    self.current_hover = phone_number
         else:
             if self.current_hover:
                 self.app.canvas.configure(cursor="")
                 self.current_hover = None
         
         if self.connecting and self.temp_line and self.connection_start:
-            p = self.app.people[self.connection_start]
+            p = self.app.phone_nodes[self.connection_start]
             zoom = self.last_zoom
             start_x, start_y = p.x * zoom, p.y * zoom
             canvas_x = self.app.canvas.canvasx(event.x)
             canvas_y = self.app.canvas.canvasy(event.y)
             self.app.canvas.coords(self.temp_line, start_x, start_y, canvas_x, canvas_y)
             
-            if person_id is not None and person_id != self.connection_start:
+            if phone_number is not None and phone_number != self.connection_start:
                 self.app.canvas.itemconfig(self.temp_line, fill=COLORS['success'], width=4)
             else:
                 self.app.canvas.itemconfig(self.temp_line, fill=COLORS['accent'], width=3)
@@ -250,52 +251,52 @@ class EventHandlers:
         
         items = self.app.canvas.find_overlapping(canvas_x - tolerance, canvas_y - tolerance, 
                                            canvas_x + tolerance, canvas_y + tolerance)
-        person_id = None
+        phone_number = None
         for item in items:
             tags = self.app.canvas.gettags(item)
-            if any("person" in tag for tag in tags):
+            if any("phone" in tag for tag in tags):
                 for tag in tags:
-                    if tag.startswith("person_"):
-                        person_id = int(tag.split("_")[1])
+                    if tag.startswith("phone_") and tag != "phone":
+                        phone_number = tag[6:]  # Remove "phone_" prefix
                         break
-                if person_id is not None:
+                if phone_number is not None:
                     break
-        if person_id is None:
+        if phone_number is None:
             self.cancel_connection()
             return
 
         if not self.connecting:
-            self.start_connection(person_id, canvas_x, canvas_y)
-        elif self.connection_start == person_id:
+            self.start_connection(phone_number, canvas_x, canvas_y)
+        elif self.connection_start == phone_number:
             self.cancel_connection()
         else:
-            self.complete_connection(person_id)
+            self.complete_connection(phone_number)
     
     def on_escape_key(self, event):
         """Handle escape key to cancel connections"""
         if self.connecting:
             self.cancel_connection()
-            self.app.update_status("Connection cancelled with Escape key")
+            self.app.update_status("Action cancelled with Escape key")
     
     def on_delete_key(self, event):
-        """Handle delete key to remove selected connection or person"""
+        """Handle delete key to remove selected connection or phone"""
         if self.selected_connection:
             self.delete_connection()
-        elif self.selected_person:
-            self.app.delete_person()
+        elif self.selected_phone:
+            self.app.delete_phone()
     
     def on_color_cycle_key(self, event):
-        """Handle 'c' key to cycle colors of selected person"""
-        if self.selected_person:
-            person = self.app.people[self.selected_person]
-            person.color = (person.color + 1) % len(CARD_COLORS)
+        """Handle 'c' key to cycle colors of selected phone"""
+        if self.selected_phone:
+            phone_node = self.app.phone_nodes[self.selected_phone]
+            phone_node.color = (phone_node.color + 1) % len(CARD_COLORS)
             
             if not self.dragging:
-                self.app.refresh_person_widget(self.selected_person)
-                self.app.update_status(f"Changed {person.name}'s color")
+                self.app.refresh_phone_widget(self.selected_phone)
+                self.app.update_status(f"Changed {phone_node.phone_number}'s color")
             else:
-                self.app.update_status(f"Color will be updated for {person.name} after drag")
-                self._pending_color_refresh = self.selected_person
+                self.app.update_status(f"Color will be updated for {phone_node.phone_number} after drag")
+                self._pending_color_refresh = self.selected_phone
 
     def on_middle_button_press(self, event):
         self.app.canvas.scan_mark(event.x, event.y)
@@ -316,51 +317,65 @@ class EventHandlers:
         self.app.zoom_var.set(new_zoom)
         self.on_zoom(new_zoom)
 
-    def start_connection(self, person_id, x, y):
-        """Start drawing a connection line from a person"""
+    def start_connection(self, phone_number, x, y):
+        """Start drawing a connection line from a phone"""
         self.connecting = True
-        self.connection_start = person_id
-        p1 = self.app.people[person_id]
+        self.connection_start = phone_number
+        p1 = self.app.phone_nodes[phone_number]
         zoom = self.last_zoom
         start_x, start_y = p1.x * zoom, p1.y * zoom
         self.temp_line = self.app.canvas.create_line(start_x, start_y, x, y, fill=COLORS['accent'], width=3, dash=(4, 4))
-        self.app.update_status(f"🔗 Connecting from {p1.name}... Right-click another person to link, or right-click again to cancel.")
-        self.app.canvas_helpers.highlight_person_for_connection(person_id)
+        self.app.update_status(f"🔗 Adding note from {p1.phone_number}... Right-click another phone to link, or right-click again to cancel.")
+        self.app.canvas_helpers.highlight_phone_for_connection(phone_number)
 
-    def complete_connection(self, person_id):
-        """Complete a connection between two people"""
+    def complete_connection(self, phone_number):
+        """Complete a connection between two phones with optional notes"""
         if not self.connecting or self.connection_start is None:
             return
             
-        id1 = self.connection_start
-        id2 = person_id
+        phone1 = self.connection_start
+        phone2 = phone_number
         
         # Avoid self-connection
-        if id1 == id2:
+        if phone1 == phone2:
             self.cancel_connection()
             return
-            
-        # Check if connection already exists
-        if id2 in self.app.people[id1].connections:
-            messagebox.showinfo("Connection Exists", "These two people are already connected.")
-            self.cancel_connection()
-            return
-            
-        # Ask for a label for the connection
-        dialog = ConnectionLabelDialog(self.app.root, "Add Connection Label")
+        
+        # Ask for a label/note for the connection (optional)
+        dialog = ConnectionLabelDialog(self.app.root, "Add Connection Note (Optional)")
         self.app.root.wait_window(dialog.dialog)
-        label = dialog.result if dialog.result else ""
         
-        # Add connection to data structures
-        self.app.people[id1].connections[id2] = label
-        self.app.people[id2].connections[id1] = label
+        # If there's no call data between these phones, create empty structure
+        if phone1 not in self.app.call_data:
+            self.app.call_data[phone1] = {}
+        if phone2 not in self.app.call_data[phone1]:
+            self.app.call_data[phone1][phone2] = []
         
-        # Draw the final connection line
-        self.app.draw_connection(id1, id2, label, self.last_zoom)
+        if phone2 not in self.app.call_data:
+            self.app.call_data[phone2] = {}
+        if phone1 not in self.app.call_data[phone2]:
+            self.app.call_data[phone2][phone1] = []
+        
+        # Add manual note if provided
+        if dialog.result:
+            # Store as a special "manual note" entry
+            manual_note = {
+                'date': datetime.now().strftime('%Y-%m-%d'),
+                'start_time': '',
+                'end_time': '',
+                'duration': 0,
+                'direction': 'Manual Note',
+                'note': dialog.result
+            }
+            self.app.call_data[phone1][phone2].append(manual_note)
+            self.app.call_data[phone2][phone1].append(manual_note)
+        
+        # Update connections
+        self.app.canvas_helpers.update_connections()
         
         # Clean up
         self.cancel_connection()
-        self.app.update_status(f"✅ Linked {self.app.people[id1].name} and {self.app.people[id2].name}")
+        self.app.update_status(f"✅ Connection updated between {phone1} and {phone2}")
 
     def cancel_connection(self):
         """Cancel the connection drawing process"""
@@ -368,57 +383,81 @@ class EventHandlers:
             self.app.canvas.delete(self.temp_line)
             self.temp_line = None
         if self.connection_start:
-            self.app.canvas_helpers.unhighlight_person_for_connection(self.connection_start)
+            self.app.canvas_helpers.unhighlight_phone_for_connection(self.connection_start)
         self.connecting = False
         self.connection_start = None
         self.app.update_status("Ready")
 
-    def edit_person(self, person_id):
-        """Handle editing a person's details via a dialog."""
-        if person_id in self.app.people:
-            person = self.app.people[person_id]
+    def edit_phone(self, phone_number):
+        """Handle editing a phone's alias via a dialog."""
+        if phone_number in self.app.phone_nodes:
+            phone_node = self.app.phone_nodes[phone_number]
             
             # Use a dialog to get updated information
-            dialog = PersonDialog(self.app.root, 
-                                  "Edit Person", 
-                                  name=person.name, 
-                                  dob=person.dob,
-                                  alias=person.alias,
-                                  address=person.address,
-                                  phone=person.phone,
-                                  files=person.files)
+            dialog = PhoneDialog(self.app.root, 
+                                "Edit Phone Alias", 
+                                phone_number=phone_node.phone_number,
+                                alias=phone_node.alias)
             self.app.root.wait_window(dialog.dialog)
             
             if dialog.result:
-                # Update person data
-                person.name = dialog.result['name']
-                person.dob = dialog.result['dob']
-                person.alias = dialog.result['alias']
-                person.address = dialog.result['address']
-                person.phone = dialog.result['phone']
-                person.files = dialog.result['files']
+                # Update phone data (only alias can be changed)
+                phone_node.alias = dialog.result['alias']
                 
-                # Refresh the specific person's widget on the canvas
-                self.app.refresh_person_widget(person_id)
-                self.app.update_status(f"Updated details for {person.name}")
+                # Refresh the specific phone's widget on the canvas
+                self.app.refresh_phone_widget(phone_number)
+                self.app.update_status(f"Updated alias for {phone_node.phone_number}")
 
     def edit_connection_label(self):
-        """Edit the label of the selected connection"""
+        """Edit the note of the selected connection"""
         if not self.selected_connection:
             return
             
-        id1, id2 = self.selected_connection
-        current_label = self.app.people[id1].connections.get(id2, "")
+        phone1, phone2 = self.selected_connection
         
-        dialog = ConnectionLabelDialog(self.app.root, "Edit Connection Label", initial_value=current_label)
+        # Find existing manual note if any
+        current_note = ""
+        if phone1 in self.app.call_data and phone2 in self.app.call_data[phone1]:
+            for record in self.app.call_data[phone1][phone2]:
+                if record.get('direction') == 'Manual Note':
+                    current_note = record.get('note', '')
+                    break
+        
+        dialog = ConnectionLabelDialog(self.app.root, "Edit Connection Note", initial_value=current_note)
         self.app.root.wait_window(dialog.dialog)
         
         if dialog.result is not None:
-            new_label = dialog.result
-            self.app.people[id1].connections[id2] = new_label
-            self.app.people[id2].connections[id1] = new_label
+            # Remove old manual note if exists
+            if phone1 in self.app.call_data and phone2 in self.app.call_data[phone1]:
+                self.app.call_data[phone1][phone2] = [r for r in self.app.call_data[phone1][phone2] if r.get('direction') != 'Manual Note']
+                self.app.call_data[phone2][phone1] = [r for r in self.app.call_data[phone2][phone1] if r.get('direction') != 'Manual Note']
+            
+            # Add new manual note if not empty
+            if dialog.result:
+                manual_note = {
+                    'date': datetime.now().strftime('%Y-%m-%d'),
+                    'start_time': '',
+                    'end_time': '',
+                    'duration': 0,
+                    'direction': 'Manual Note',
+                    'note': dialog.result
+                }
+                
+                if phone1 not in self.app.call_data:
+                    self.app.call_data[phone1] = {}
+                if phone2 not in self.app.call_data[phone1]:
+                    self.app.call_data[phone1][phone2] = []
+                
+                if phone2 not in self.app.call_data:
+                    self.app.call_data[phone2] = {}
+                if phone1 not in self.app.call_data[phone2]:
+                    self.app.call_data[phone2][phone1] = []
+                
+                self.app.call_data[phone1][phone2].append(manual_note)
+                self.app.call_data[phone2][phone1].append(manual_note)
+            
             self.app.canvas_helpers.update_connections()
-            self.app.update_status(f"Connection label updated for {self.app.people[id1].name} and {self.app.people[id2].name}")
+            self.app.update_status(f"Connection note updated for {phone1} and {phone2}")
         
         self.clear_connection_selection()
 
@@ -428,26 +467,25 @@ class EventHandlers:
             messagebox.showwarning("No Selection", "Please select a connection to delete.")
             return
             
-        id1, id2 = self.selected_connection
-        p1_name = self.app.people[id1].name
-        p2_name = self.app.people[id2].name
+        phone1, phone2 = self.selected_connection
         
         result = messagebox.askyesno(
             "Confirm Deletion",
-            f"Are you sure you want to delete the connection between {p1_name} and {p2_name}?",
+            f"Are you sure you want to delete the connection between {phone1} and {phone2}?\n\nThis will remove all call records and notes between these numbers.",
             icon='warning'
         )
         
         if result:
             # Remove from data structures
-            if id2 in self.app.people[id1].connections:
-                del self.app.people[id1].connections[id2]
-            if id1 in self.app.people[id2].connections:
-                del self.app.people[id2].connections[id1]
+            if phone1 in self.app.call_data and phone2 in self.app.call_data[phone1]:
+                del self.app.call_data[phone1][phone2]
+            if phone2 in self.app.call_data and phone1 in self.app.call_data[phone2]:
+                del self.app.call_data[phone2][phone1]
             
             # Remove from canvas
-            if self.selected_connection in self.app.connection_lines:
-                line_id, label_id, clickable_area_id, bg_rect_id = self.app.connection_lines.pop(self.selected_connection)
+            connection_key = tuple(sorted([phone1, phone2]))
+            if connection_key in self.app.connection_lines:
+                line_id, label_id, clickable_area_id, bg_rect_id = self.app.connection_lines.pop(connection_key)
                 self.app.canvas.delete(line_id)
                 if label_id:
                     self.app.canvas.delete(label_id)
@@ -456,7 +494,7 @@ class EventHandlers:
                 self.app.canvas.delete(clickable_area_id)
             
             self.selected_connection = None
-            self.app.update_status(f"🗑️ Connection between {p1_name} and {p2_name} deleted")
+            self.app.update_status(f"🗑️ Connection between {phone1} and {phone2} deleted")
 
     def highlight_connection_selection(self):
         """Highlight the selected connection on the canvas"""

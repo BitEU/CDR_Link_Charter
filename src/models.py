@@ -1,71 +1,73 @@
 # models.py
 """
-Data models for the People Connection Visualizer
+Data models for the CDR Visualizer
 """
 
-class Person:
+class PhoneNode:
     """
-    Represents a person in the connection network
+    Represents a phone number node in the CDR network
     """
-    def __init__(self, name, dob="", alias="", address="", phone="", color=0):
-        self.name = name
-        self.dob = dob
-        self.alias = alias
-        self.address = address
-        self.phone = phone
+    def __init__(self, phone_number, alias=""):
+        self.phone_number = phone_number
+        self.alias = alias  # Optional friendly name for the phone
         self.x = 0
         self.y = 0
-        self.color = color  # Index into CARD_COLORS array
-        self.connections = {}  # {person_id: label}
-        self.files = []  # List of attached file paths
+        self.color = 0  # Index into CARD_COLORS array
+        self.total_calls = 0  # Total calls made/received
+        self.total_duration = 0  # Total duration in seconds
     
     def __repr__(self):
-        return f"Person(name='{self.name}', connections={len(self.connections)})"
+        return f"PhoneNode(number='{self.phone_number}', alias='{self.alias}')"
     
-    def add_connection(self, person_id, label):
-        """Add a connection to another person"""
-        self.connections[person_id] = label
-    def remove_connection(self, person_id):
-        """Remove a connection to another person"""
-        if person_id in self.connections:
-            del self.connections[person_id]
-    
-    def has_connection(self, person_id):
-        """Check if connected to another person"""
-        return person_id in self.connections
-    
-    def get_connection_label(self, person_id):
-        """Get the label for a connection"""
-        return self.connections.get(person_id, "")
+    def get_display_name(self):
+        """Get display name - alias if available, otherwise phone number"""
+        if self.alias:
+            return f"{self.alias}\n{self.phone_number}"
+        return self.phone_number
     
     def to_dict(self):
         """Convert to dictionary for serialization"""
         return {
-            'name': self.name,
-            'dob': self.dob,
+            'phone_number': self.phone_number,
             'alias': self.alias,
-            'address': self.address,
-            'phone': self.phone,
             'x': self.x,
             'y': self.y,
             'color': self.color,
-            'connections': self.connections,
-            'files': self.files
+            'total_calls': self.total_calls,
+            'total_duration': self.total_duration
         }
     
     @classmethod
     def from_dict(cls, data):
-        """Create Person from dictionary"""
-        person = cls(
-            name=data.get('name', ''),
-            dob=data.get('dob', ''),
-            alias=data.get('alias', ''),
-            address=data.get('address', ''),
-            phone=data.get('phone', ''),
-            color=data.get('color', 0)
+        """Create PhoneNode from dictionary"""
+        node = cls(
+            phone_number=data.get('phone_number', ''),
+            alias=data.get('alias', '')
         )
-        person.x = data.get('x', 0)
-        person.y = data.get('y', 0)
-        person.connections = data.get('connections', {})
-        person.files = data.get('files', [])
-        return person
+        node.x = data.get('x', 0)
+        node.y = data.get('y', 0)
+        node.color = data.get('color', 0)
+        node.total_calls = data.get('total_calls', 0)
+        node.total_duration = data.get('total_duration', 0)
+        return node
+
+
+class CallRecord:
+    """
+    Represents a single call record between two phones
+    """
+    def __init__(self, date, start_time, end_time, duration, direction):
+        self.date = date
+        self.start_time = start_time
+        self.end_time = end_time
+        self.duration = duration  # in seconds
+        self.direction = direction  # 'Inbound' or 'Outbound'
+    
+    def to_dict(self):
+        return {
+            'date': self.date,
+            'start_time': self.start_time,
+            'end_time': self.end_time,
+            'duration': self.duration,
+            'direction': self.direction
+        }

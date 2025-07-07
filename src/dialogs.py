@@ -1,6 +1,6 @@
 # dialogs.py
 """
-Dialog classes for the People Connection Visualizer
+Dialog classes for the CDR Visualizer
 """
 
 import tkinter as tk
@@ -12,15 +12,15 @@ import threading
 from pathlib import Path
 from .constants import COLORS
 
-class PersonDialog:
+class PhoneDialog:
     """
-    Dialog for adding/editing person information
+    Dialog for adding/editing phone information
     """
     def __init__(self, parent, title, **kwargs):
         self.result = None
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title(f"✏️ {title}")
-        self.dialog.geometry("450x900")
+        self.dialog.title(f"📱 {title}")
+        self.dialog.geometry("450x300")
         self.dialog.configure(bg=COLORS['background'])
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -29,11 +29,59 @@ class PersonDialog:
         # Center the dialog
         self.dialog.update_idletasks()
         x = (self.dialog.winfo_screenwidth() // 2) - (450 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (900 // 2)
-        self.dialog.geometry(f"450x900+{x}+{y}")
+        y = (self.dialog.winfo_screenheight() // 2) - (300 // 2)
+        self.dialog.geometry(f"450x300+{x}+{y}")
         
         # Main container
         main_frame = tk.Frame(self.dialog, bg=COLORS['background'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
+        
+        # Icon and title
+        title_label = tk.Label(main_frame,
+                              text="✅ You're Up to Date!",
+                              font=("Segoe UI", 16, "bold"),
+                              bg=COLORS['background'],
+                              fg=COLORS['success'])
+        title_label.pack(pady=(0, 20))
+        
+        # Version info
+        version_label = tk.Label(main_frame,
+                                text=f"Current Version: {current_version}",
+                                font=("Segoe UI", 12),
+                                bg=COLORS['background'],
+                                fg=COLORS['text_primary'])
+        version_label.pack(pady=(0, 10))
+        
+        # Description
+        desc_label = tk.Label(main_frame,
+                             text="You have the latest version of COMRADE.",
+                             font=("Segoe UI", 10),
+                             bg=COLORS['background'],
+                             fg=COLORS['text_secondary'])
+        desc_label.pack(pady=(0, 20))
+        
+        # OK button
+        ok_btn = tk.Button(main_frame,
+                          text="OK",
+                          font=("Segoe UI", 11, "bold"),
+                          bg=COLORS['primary'],
+                          fg='white',
+                          relief=tk.FLAT,
+                          padx=30,
+                          pady=10,
+                          command=self.ok,
+                          cursor='hand2')
+        ok_btn.pack()
+        
+        # Key bindings
+        self.dialog.bind('<Return>', lambda e: self.ok())
+        self.dialog.bind('<Escape>', lambda e: self.ok())
+        self.dialog.protocol("WM_DELETE_WINDOW", self.ok)
+        
+    def ok(self):
+        """Close the dialog"""
+        self.result = "ok"
+        self.dialog.destroy().dialog, bg=COLORS['background'])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
         
         # Title
@@ -52,13 +100,10 @@ class PersonDialog:
         form_inner = tk.Frame(form_frame, bg=COLORS['surface'])
         form_inner.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
         
-        # Fields with modern styling
+        # Fields
         fields = [
-            ("👤 Full Name:", "name", True),
-            ("🎂 Date of Birth:", "dob", False),
-            ("🏷️ Alias/Nickname:", "alias", False),
-            ("🏠 Address:", "address", False),
-            ("📞 Phone Number:", "phone", False)
+            ("📞 Phone Number:", "phone_number", True),
+            ("🏷️ Alias/Name:", "alias", False)
         ]
         
         self.entries = {}
@@ -76,7 +121,7 @@ class PersonDialog:
                                   anchor="w")
             field_label.grid(row=i*2, column=0, sticky="w", pady=(8 if i > 0 else 0, 4))
             
-            # Entry with modern styling
+            # Entry
             entry = tk.Entry(form_inner, 
                            font=("Segoe UI", 12),
                            bg='white',
@@ -96,52 +141,14 @@ class PersonDialog:
         
         # Configure grid weights
         form_inner.columnconfigure(0, weight=1)
-          # Required field note
+        
+        # Required field note
         note_label = tk.Label(form_inner,
                              text="* Required fields",
                              font=("Segoe UI", 9),
                              fg=COLORS['text_secondary'],
                              bg=COLORS['surface'])
         note_label.grid(row=len(fields)*2, column=0, sticky="w", pady=(10, 0))
-        
-        # File attachments section
-        files_label = tk.Label(form_inner,
-                              text="📎 Attached Files:",
-                              font=("Segoe UI", 11, "bold"),
-                              fg=COLORS['text_primary'],
-                              bg=COLORS['surface'],
-                              anchor="w")
-        files_label.grid(row=len(fields)*2+1, column=0, sticky="w", pady=(12, 4))
-        
-        # Files frame
-        files_frame = tk.Frame(form_inner, bg=COLORS['surface'])
-        files_frame.grid(row=len(fields)*2+2, column=0, sticky="ew", pady=(0, 10))
-        
-        # File list and buttons
-        self.files_list = tk.Listbox(files_frame, height=3, font=("Segoe UI", 10),
-                                    bg='white', fg=COLORS['text_primary'],
-                                    selectbackground=COLORS['primary'])
-        self.files_list.pack(fill=tk.X, pady=(0, 5))
-        
-        files_btn_frame = tk.Frame(files_frame, bg=COLORS['surface'])
-        files_btn_frame.pack(fill=tk.X)
-        
-        add_file_btn = tk.Button(files_btn_frame, text="+ Add File",
-                                command=self.add_file, font=("Segoe UI", 9),
-                                bg=COLORS['primary'], fg='white', relief=tk.FLAT,
-                                padx=10, pady=4, cursor='hand2')
-        add_file_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
-        remove_file_btn = tk.Button(files_btn_frame, text="Remove",
-                                   command=self.remove_file, font=("Segoe UI", 9),
-                                   bg=COLORS['text_secondary'], fg='white', relief=tk.FLAT,
-                                   padx=10, pady=4, cursor='hand2')
-        remove_file_btn.pack(side=tk.LEFT)
-        
-        # Initialize files list with existing files
-        self.attached_files = kwargs.get('files', [])
-        for file_path in self.attached_files:
-            self.files_list.insert(tk.END, os.path.basename(file_path))
         
         # Button frame
         button_frame = tk.Frame(main_frame, bg=COLORS['background'])
@@ -175,31 +182,12 @@ class PersonDialog:
         # Add hover effects to buttons
         self._add_button_hover_effects(ok_btn, cancel_btn)
         
-        # Focus on name entry
-        self.entries["name"].focus()
+        # Focus on phone number entry
+        self.entries["phone_number"].focus()
         
         # Bind Enter key to OK
         self.dialog.bind('<Return>', lambda e: self.ok())
         self.dialog.bind('<Escape>', lambda e: self.cancel())
-    
-    def add_file(self):
-        """Handle adding a file attachment"""
-        file_path = filedialog.askopenfilename(
-            title="Select file to attach",
-            filetypes=[("All files", "*.*"), ("Images", "*.png *.jpg *.jpeg *.gif *.bmp"),
-                      ("Documents", "*.pdf *.txt *.doc *.docx"), ("Videos", "*.mp4 *.avi *.mov")]
-        )
-        if file_path:
-            self.attached_files.append(file_path)
-            self.files_list.insert(tk.END, os.path.basename(file_path))
-    
-    def remove_file(self):
-        """Handle removing a file attachment"""
-        selection = self.files_list.curselection()
-        if selection:
-            idx = selection[0]
-            self.files_list.delete(idx)
-            del self.attached_files[idx]
     
     def _add_button_hover_effects(self, ok_btn, cancel_btn):
         """Add hover effects to buttons"""
@@ -219,19 +207,21 @@ class PersonDialog:
         
     def ok(self):
         """Handle OK button click"""
-        # Validate name is not empty
-        if not self.entries["name"].get().strip():
-            messagebox.showerror("Error", "Name is required!", parent=self.dialog)
+        # Validate phone number is not empty
+        if not self.entries["phone_number"].get().strip():
+            messagebox.showerror("Error", "Phone number is required!", parent=self.dialog)
             return
             
         self.result = {field: entry.get().strip() for field, entry in self.entries.items()}
-        self.result['files'] = self.attached_files[:]  # Copy the files list
         self.dialog.destroy()
         
     def cancel(self):
         """Handle Cancel button click"""
         self.dialog.destroy()
 
+
+# Keep the ConnectionLabelDialog, VersionUpdateDialog, and NoUpdateDialog classes unchanged
+# since they're still needed for the application
 
 class ConnectionLabelDialog:
     """
@@ -270,7 +260,7 @@ class ConnectionLabelDialog:
         input_frame.pack(fill=tk.X, pady=(0, 20))
         
         label_text = tk.Label(input_frame,
-                             text="Connection Label:",
+                             text="Connection Note (Optional):",
                              font=("Segoe UI", 12, "bold"),
                              bg=COLORS['background'],
                              fg=COLORS['text_primary'])
@@ -293,7 +283,7 @@ class ConnectionLabelDialog:
         
         # Instructions
         instruction_label = tk.Label(input_frame,
-                                   text="Enter a descriptive label for this connection\n(e.g., 'friend', 'dealer', 'family member')",
+                                   text="Add any notes about this connection\n(e.g., 'suspected', 'confirmed', 'business')",
                                    font=("Segoe UI", 9),
                                    bg=COLORS['background'],
                                    fg=COLORS['text_secondary'],
@@ -333,15 +323,11 @@ class ConnectionLabelDialog:
         # Key bindings
         self.dialog.bind('<Return>', lambda e: self.ok())
         self.dialog.bind('<Escape>', lambda e: self.cancel())
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)  # Handle window close
+        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
         
     def ok(self):
         """Handle OK button click"""
-        label = self.label_entry.get().strip()
-        if not label:
-            messagebox.showerror("Error", "Connection label cannot be empty!", parent=self.dialog)
-            return
-        self.result = label
+        self.result = self.label_entry.get().strip()
         self.dialog.destroy()
         
     def cancel(self):
